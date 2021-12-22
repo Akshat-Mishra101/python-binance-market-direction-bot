@@ -5,15 +5,15 @@ from decimal import Decimal
 import threading
 
 
-api_key = 'BLFgpfDI6Sw8dDwmKiemq4M75FaCJjs2gIhVANKNyNfj5KRbZOEbeLinwJzpfx0b'
-api_secret = 'jdhTwrB1d5q9MEdohdqPUXQRCMGwp04kkEZPbUrY37GZI4GKfoNi9n1zxe30xiny'
+api_key = ''
+api_secret = ''
 
 
 lever = 20
-quant = 0.015
-order_point = 2743
+quant = 13
+order_point = 1.3
 
-ticker = 'YFIIUSDT'
+ticker = 'ALGOUSDT'
 
 trigger = True #if true, we perform a buy when the price reaches the order point, if not then the bot follows its usual process
 
@@ -26,6 +26,26 @@ clock_speed = .2
 inside_the_zone = False
 position_long_open = False
 position_short_open = False
+initial = False
+
+#Profit Systems
+intermediate_order_point = order_point
+trailing_long_target = 5
+trailing_long_base = 3
+
+trailing_long_shift = trailing_long_target - trailing_long_base
+
+
+trailing_short_target = 5
+trailing_short_base = 3
+
+trailing_short_shift = trailing_short_target - trailing_short_base
+
+long_order_point_shifted = False
+short_order_point_shifted = False
+
+
+
 #Fixed Declarations End
 
 
@@ -37,6 +57,102 @@ print("Connecting To The Binance Server")
 client = Client(api_key,api_secret)
 print("Connection Successful")
 #Connection Complete
+
+
+#profit trailing mechanism
+
+def target_chaser():
+    global intermediate_order_point
+    
+    global order_point
+    global live_price
+    global lever
+
+    global trailing_long_target
+    global trailing_long_base
+
+    global trailing_short_target
+    global trailing_short_base
+
+    global position_long_open
+    global position_short_open
+    
+    global trailing_long_shift
+    global trailing_short_shift
+    
+    while True:
+
+        profit = abs(percentage_leveraged_change(intermediate_order_point,live_price,lever))
+        
+        print(f'Profit on {intermediate_order_point} and {live_price} with leverge {lever} is {profit}')
+
+
+        if position_long_open and profit >= 1:
+            print(f"Leveraged Profit on long is {profit}")
+        if position_short_open and profit >= 1:
+            print(f"Leveraged Profit on short is {profit}")
+
+        if position_long_open and profit > trailing_long_target and profit == (trailing_long_target + trailing_long_shift): #Price Has Reached The Profit Target
+            
+            trailing_long_target = trailing_long_target + trailing_long_shift
+            trailing_long_base = trailing_long_base + trailing_long_shift
+            
+            print(f"short targets shifted to, current {trailing_long_target} and cutoff {trailing_long_base}")
+            
+        if position_short_open and profit > trailing_short_target and profit == (trailing_short_target + trailing_short_shift):
+            
+            trailing_short_target = trailing_short_target + trailing_short_shift
+            trailing_short_base = trailing_short_base + trailing_short_shift
+            
+            print(f"short targets shifted to, current {trailing_short_target} and cutoff {trailing_short_base}")
+      
+            
+            
+            
+def profit_taker():
+    
+    global order_point
+    global live_price
+    global lever
+    global intermediate_order_point
+
+    global long_order_point_shifted
+    global short_order_point_shifted
+
+    global trailing_long_target
+    global trailing_long_base
+
+    global trailing_short_target
+    global trailing_short_base
+
+    global trailing_long_shift
+    global trailing_short_shift
+    
+    long_order_point_shift = trailing_long_shift/lever
+    short_order_point_shift = trailing_short_shift/lever
+    
+    while True:
+        
+        
+        profit = round(abs(percentage_leveraged_change(intermediate_order_point,live_price,lever)))
+        print(f'Profit is {profit} in profit taker')
+        if position_long_open and profit == trailing_long_target:
+            
+            order_point = order_point + ((long_order_point_shift/100)*order_point)
+            long_order_point_shifted = True
+            
+            print("Order Point Shifted For Long")
+            
+        if position_short_open and profit == trailing_short_target:
+            
+            order_point = order_point - ((short_order_point_shift/100)*order_point)
+            short_order_point_shifted = True
+            
+            print("Order Point Shifted For Short")
+        
+            
+
+
 
 #Tested
 def CloseOrder(OrderType:str):
@@ -86,12 +202,12 @@ def getLivePrice():
     global live_price
     global clock_speed
     global order_point
+    global intermediate_order_point
     
     while True:
        data = (client.futures_symbol_ticker(symbol=ticker))
        live_price = float(data['price'])
-       print(f'The Current Price is {live_price}')
-       print(f'The Order Point is {order_point}')
+       print(f'The Current Price is {live_price} and The Order Point is {order_point} and the intermediate order point is {intermediate_order_point}')
        time.sleep(clock_speed)
 
 
@@ -117,55 +233,128 @@ def zone_identifier_process():
         else:
             inside_the_zone = False
 
-
-def order_execution:
+#Tested
+def order_execution():
+    
     
     global order_point
     global live_price
+    global intermediate_order_point
 
+    global clock_speed
+
+    global position_long_open
+    global position_short_open
+
+    global long_order_point_shifted
+    global short_order_point_shifted
+
+    global trailing_long_base
+    global trailing_short_base
+
+    global initial
+    
     
     
     while True:
 
         
-        if live_price >= order_point:
+        if live_price > order_point:
             
             if position_long_open != True:
                 
+                
                 if position_short_open:
+
+                    if short_order_point_shifted:
+                        reset()
+                        short_order_point_shifted = False
+                        print(f'Profits Booked And Positions Closed at {trailing_long_base} percent profit')
+                        
                     
                     CloseOrder('SELL')
                     position_short_open = False
 
+                
+
                 openOrder('BUY')
                 order_point = live_price
+                intermediate_order_point  = order_point
+                position_long_open  = True
 
-        else:
+        elif live_price < order_point:
+            
             
             if position_short_open != True:
                 
                 if position_long_open:
+
+                    if long_order_point_shifted:
+                        reset()
+                        long_order_point_shifted = False
+                        print(f'Profits Booked And Positions Closed at {trailing_short_base} percent profit')
+                        
                     
                     CloseOrder('BUY')
                     position_long_open = False
+
+                
                     
                 openOrder('SELL')
                 order_point = live_price
+                intermediate_order_point  = order_point
+                position_short_open = True
+
+        else:
+            print("Price At BreakEven")
+        
                 
-        time.sleep(.2)
+
+                
                     
+
+def reset():
+    global order_point
+    global intermediate_order_point
+
+    global trailing_long_target
+    global trailing_long_base
+
+    global trailing_short_target
+    global trailing_short_base
+
+    intermediate_order_point = order_point
+
+    trailing_long_target = 5
+    trailing_long_base = 3
+
+    trailing_short_target = 5
+    trailing_short_base = 3
+    print("Values Reset")
+    
+
+if __name__ == '__main__':
+    
+
+    print('Starting The Bot')
+    Price_Updater = threading.Thread(target = getLivePrice)
+    Price_Updater.start()
+    time.sleep(2)
+    Zone_Identifier_Thread = threading.Thread(target = zone_identifier_process)
+    Zone_Identifier_Thread.start()
+    Order_Executor_Thread = threading.Thread(target = order_execution)
+    Order_Executor_Thread.start()
+    time.sleep(.2)
+
+    Profit_Target_Shifter = threading.Thread(target = target_chaser)
+    Profit_Target_Shifter.start()
+    Profit_Executor = threading.Thread(target = profit_taker)
+    Profit_Executor.start()
+
+    
 
 
 
     
 
-if __name__ == '__main__':
-
-    print('Starting The Bot')
-    Price_Updater = threading.Thread(target = getLivePrice)
-    Price_Updater.start()
-    time.sleep(.2)
-    Zone_Identifier_Thread = threading.Thread(target = zone_identifier_process)
-    Zone_Identifier_Thread.start()
-
-print(percentage_leveraged_change(1,1.1,10))
+#print(percentage_leveraged_change(1,1.1,10))
