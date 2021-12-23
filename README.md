@@ -12,4 +12,8 @@ The Bot follows a compounding profit taking strategy, where there is a trigger a
 where, whenever he price reaches the trigger percentage, our take peofit is shifted by a number, as defined by the script
 
 
+# Note 
+### I am not responsible for any misuse/mishandling of this bot or liable of any of the losses that occur to a person because of it.
+
+
 
